@@ -1,3 +1,4 @@
+import json
 import pytest
 from pumpfunpy import PumpFunAPI
 
@@ -21,7 +22,7 @@ def test_get_health(api):
 
 def test_get_sol_price(api):
     price = api.get_sol_price().get('solPrice', None)
-    assert price is not None
+    assert isinstance(price, float)
 
 
 def test_list_trades(api):
@@ -42,5 +43,31 @@ def test_list_trades(api):
     }
     assert expected_keys.issubset(sample.keys())
 
+
 def test_list_replies(api):
-    assert True
+    response = api.list_replies(mint=MINT, limit=LIMIT, offset=0)
+    assert isinstance(response, dict)
+    assert "replies" in response
+    assert isinstance(response["replies"], list)
+    # Allow empty replies, but if non-empty, check the shape
+    if response["replies"]:
+        r = response["replies"][0]
+        expected_keys = {
+            "signature",
+            "is_buy",
+            "sol_amount",
+            "id",
+            "mint",
+            "file_uri",
+            "text",
+            "user",
+            "timestamp",
+            "total_likes",
+            "username",
+            "profile_image",
+            "liked_by_user"
+        }
+        assert expected_keys.issubset(r.keys())
+
+    assert 'hasMore' in response
+    assert 'offset' in response

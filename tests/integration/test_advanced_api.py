@@ -17,30 +17,32 @@ def test_get_health(api):
 
 def test_list_new_coins(api):
     out = api.list_new_coins()
-    assert ('coins' in out) and \
-           ('pagination' in out) and \
-           ('lastScore' in out['pagination']) and \
-           ('hasMore' in out['pagination'])
+    assert 'coins' in out
+    assert 'pagination' in out
+    assert 'lastScore' in out['pagination']
+    assert 'hasMore' in out['pagination']
+
 
 def test_list_about_to_graduate_coins(api):
     out = api.list_about_to_graduate_coins()
-    assert ('coins' in out) and \
-           ('pagination' in out) and \
-           ('lastScore' in out['pagination']) and \
-           ('hasMore' in out['pagination'])
+    assert 'coins' in out
+    assert 'pagination' in out
+    assert 'lastScore' in out['pagination']
+    assert 'hasMore' in out['pagination']
+
 
 def test_list_graduated_coins(api):
     out = api.list_graduated_coins()
-    assert ('coins' in out) and \
-           ('pagination' in out) and \
-           ('lastScore' in out['pagination']) and \
-           ('hasMore' in out['pagination'])
+    assert 'coins' in out
+    assert 'pagination' in out
+    assert 'lastScore' in out['pagination']
+    assert 'hasMore' in out['pagination']
 
 
 def test_list_featured_coins(api):
     out = api.list_featured_coins()
-    assert ('coins' in out) and \
-           ('pagination' in out) and \
-           ('offset' in out['pagination']) and \
-           ('limit' in out['pagination']) and \
-           ('hasMore' in out['pagination'])
+    assert 'coins' in out
+    assert 'pagination' in out
+    assert 'offset' in out['pagination']
+    assert 'limit' in out['pagination']
+    assert 'hasMore' in out['pagination']

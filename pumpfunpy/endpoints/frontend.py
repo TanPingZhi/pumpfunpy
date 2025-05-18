@@ -21,9 +21,9 @@ class FrontendAPI:
             params={"limit": limit, "offset": offset, "minimumSize": minimum_size},
         )
 
-    def list_replies(self, mint: str, limit: int, offset: int = 0) -> dict:
+    def list_replies(self, mint: str, limit: int, offset: int = 0, reverse_order: bool = True) -> dict:
         return self._client.request(
             "GET",
             f"/replies/{mint}",
-            params={"limit": limit, "offset": offset},
+            params={"limit": limit, "offset": offset, "reverseOrder": reverse_order},
         )
