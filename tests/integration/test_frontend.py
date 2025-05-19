@@ -4,8 +4,6 @@ from pumpfunpy import PumpFunAPI
 
 # fartcoin: https://pump.fun/coin/9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump
 MINT = "9BB6NFEcjBCtnNLFko2FqVQBq8HHM13kCyYcdQbgpump"
-LIMIT = 200
-
 
 @pytest.fixture
 def api():
@@ -24,12 +22,14 @@ def test_get_sol_price(api):
     price = api.get_sol_price().get('solPrice', None)
     assert isinstance(price, float)
 
-
+# upto 200 trades
 def test_list_trades(api):
-    trades = api.list_trades(mint=MINT, limit=LIMIT, offset=0)
+    MINT = 'AtSyNFCLenHGgoDKJQiLCfKmGf4QUq4BAYcgJzeCpump'
+    trades = api.list_trades(mint=MINT, limit=200, offset=0)
     assert isinstance(trades, list)
-    assert len(trades) == LIMIT
+    assert len(trades) == 200
     sample = trades[0]
+    print(json.dumps(sample, indent=4))
     expected_keys = {
         "signature",
         "mint",
@@ -43,9 +43,9 @@ def test_list_trades(api):
     }
     assert expected_keys.issubset(sample.keys())
 
-
+# upto 1000 replies
 def test_list_replies(api):
-    response = api.list_replies(mint=MINT, limit=LIMIT, offset=0)
+    response = api.list_replies(mint=MINT, limit=1000, offset=0)
     assert isinstance(response, dict)
     assert "replies" in response
     assert isinstance(response["replies"], list)

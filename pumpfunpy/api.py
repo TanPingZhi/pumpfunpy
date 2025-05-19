@@ -1,10 +1,14 @@
-from .endpoints import frontend
+import asyncio # need aiohttp to run this
+import json
+from typing import AsyncIterator
+
+import socketio
+import websockets
+
 from .transport import HTTPClient
-from .websocket import WebSocketClient
 from .config import API_VERSIONS
 from .endpoints.advanced import AdvancedAPI
 from .endpoints.frontend import FrontendAPI
-
 
 class PumpFunAPI:
 
@@ -37,10 +41,56 @@ class PumpFunAPI:
     def list_featured_coins(self) -> dict:
         return self._advanced.list_featured_coins()
 
-    # Need to test this
-    # def live_trades_client(self, url: str = None) -> WebSocketClient:
-    #     ws_url = (url or self._client.base_url.replace("https://", "wss://")) + "/ws/trades"
-    #     return WebSocketClient(ws_url)
+    async def stream_all_trades(self) -> AsyncIterator[dict]:
+        queue: asyncio.Queue = asyncio.Queue()
+        sio = socketio.AsyncClient(logger=False, engineio_logger=False)
+        @sio.on("tradeCreated")
+        async def _(data):
+            await queue.put(data)
+        await sio.connect(
+            API_VERSIONS['frontend_v3'],
+            transports=["websocket"],
+        )
 
-    def post_reply(self):
-        pass
+        try:
+            while True:
+                trade = await queue.get()
+                yield trade
+        finally:
+            await sio.disconnect()
+
+    async def stream_new_coins(self) -> AsyncIterator[dict]:
+        uri = "wss://prod-v2.nats.realtime.pump.fun/"
+        async with websockets.connect(uri) as ws:
+
+            # Send the NATS CONNECT handshake
+            connect_payload = {
+                "no_responders": True,
+                "protocol": 1,
+                "verbose": False,
+                "pedantic": False,
+                "user": "subscriber",
+                "pass": "lW5a9y20NceF6AE9",
+                "lang": "nats.ws",
+                "version": "1.29.2",
+                "headers": True,
+            }
+            await ws.send("CONNECT " + json.dumps(connect_payload) + "\r\n")
+            await ws.send("PING\r\n")
+            await ws.recv()  # Should be "PONG\r\n"
+
+            # Subscribe to the new‐coin subject
+            await ws.send("SUB newCoinCreated.prod 1\r\n")
+
+            while True:
+                msg = await ws.recv(decode=True)
+                # msg = msg.decode("utf-8")
+                # Server‐side heartbeat
+                if msg.strip() == "PING":
+                    await ws.send("PONG\r\n")
+                    continue
+
+                if msg.startswith("MSG newCoinCreated.prod"):
+                    # The new coin is in the second line of the message
+                    payload = msg.split("\r\n", 2)[1]
+                    yield json.loads(payload)
