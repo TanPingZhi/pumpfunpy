@@ -1,4 +1,5 @@
 import asyncio # need aiohttp to run this
+import contextlib
 import json
 from typing import AsyncIterator
 
@@ -9,6 +10,8 @@ from .transport import HTTPClient
 from .config import API_VERSIONS
 from .endpoints.advanced import AdvancedAPI
 from .endpoints.frontend import FrontendAPI
+from .utils import json_deep_loads
+
 
 class PumpFunAPI:
 
@@ -83,14 +86,72 @@ class PumpFunAPI:
             await ws.send("SUB newCoinCreated.prod 1\r\n")
 
             while True:
+
                 msg = await ws.recv(decode=True)
-                # msg = msg.decode("utf-8")
                 # Server‐side heartbeat
                 if msg.strip() == "PING":
                     await ws.send("PONG\r\n")
                     continue
 
+
                 if msg.startswith("MSG newCoinCreated.prod"):
                     # The new coin is in the second line of the message
                     payload = msg.split("\r\n", 2)[1]
                     yield json.loads(payload)
+
+    async def stream_new_replies(self, mint: str) -> AsyncIterator[dict]:
+        uri = "wss://prod-v2.nats.realtime.pump.fun/"
+        async with websockets.connect(uri) as ws:
+
+            # 1) NATS CONNECT handshake
+            connect_payload = {
+                "no_responders": True,
+                "protocol": 1,
+                "verbose": False,
+                "pedantic": False,
+                "user": "subscriber",
+                "pass": "lW5a9y20NceF6AE9",
+                "lang": "nats.ws",
+                "version": "1.29.2",
+                "headers": True,
+            }
+            await ws.send("CONNECT " + json.dumps(connect_payload) + "\r\n")
+            # prime the first heartbeat
+            await ws.send("PING\r\n")
+            await ws.recv()  # expect "PONG\r\n"
+
+            # 2) subscribe to replies
+            await ws.send(f"SUB newReplyCreated.{mint}.prod 1\r\n")
+
+            # 3) spawn keep-alive task
+            async def _keepalive(interval: float = 30.0):
+                try:
+                    while True:
+                        await asyncio.sleep(interval)
+                        await ws.send("PING\r\n")
+                except asyncio.CancelledError:
+                    # normal shutdown
+                    pass
+
+            ka_task = asyncio.create_task(_keepalive())
+
+            try:
+                # 4) main read loop
+                while True:
+                    msg = await ws.recv(decode=True)
+
+                    # server-side heartbeat
+                    if msg.strip() == "PING":
+                        await ws.send("PONG\r\n")
+                        continue
+
+                    # your actual payloads
+                    if msg.startswith("MSG newReplyCreated"):
+                        payload = msg.split("\r\n", 2)[1]
+                        yield json_deep_loads(payload)['replyPayload']
+
+            finally:
+                ka_task.cancel()
+                # optionally await ka_task to silence warnings
+                with contextlib.suppress(asyncio.CancelledError):
+                    await ka_task
