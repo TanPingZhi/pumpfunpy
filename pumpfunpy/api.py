@@ -1,4 +1,4 @@
-import asyncio # need aiohttp to run this
+import asyncio  # need aiohttp to run this
 import contextlib
 import json
 from typing import AsyncIterator
@@ -6,6 +6,7 @@ from typing import AsyncIterator
 import socketio
 import websockets
 
+from .endpoints.swap import SwapAPI
 from .transport import HTTPClient
 from .config import API_VERSIONS
 from .endpoints.advanced import AdvancedAPI
@@ -18,9 +19,11 @@ class PumpFunAPI:
     def __init__(self,
                  _frontend_client: HTTPClient = None,
                  _advanced_client: HTTPClient = None,
+                 _swap_client: HTTPClient = None,
                  ):
         self._frontend = FrontendAPI(_frontend_client or HTTPClient(API_VERSIONS['frontend_v3']))
         self._advanced = AdvancedAPI(_advanced_client or HTTPClient(API_VERSIONS['advanced_v2']))
+        self._swap = SwapAPI(_swap_client or HTTPClient(API_VERSIONS["swap_v1"]))
 
     def list_trades(self, mint: str, limit: int, offset: int = 0, minimum_size: int = 0) -> list:
         return self._frontend.list_trades(mint, limit, offset, minimum_size)
@@ -44,12 +47,28 @@ class PumpFunAPI:
     def list_featured_coins(self) -> dict:
         return self._advanced.list_featured_coins()
 
+    def get_candlesticks(
+            self,
+            mint: str,
+            interval: str = "1m",
+            limit: int = 1000,
+            currency: str = "USD",
+    ) -> list[dict]:
+        return self._swap.get_candlesticks(
+            mint=mint,
+            interval=interval,
+            limit=limit,
+            currency=currency,
+        )
+
     async def stream_all_trades(self) -> AsyncIterator[dict]:
         queue: asyncio.Queue = asyncio.Queue()
         sio = socketio.AsyncClient(logger=False, engineio_logger=False)
+
         @sio.on("tradeCreated")
         async def _(data):
             await queue.put(data)
+
         await sio.connect(
             API_VERSIONS['frontend_v3'],
             transports=["websocket"],
@@ -85,19 +104,35 @@ class PumpFunAPI:
             # Subscribe to the new‐coin subject
             await ws.send("SUB newCoinCreated.prod 1\r\n")
 
-            while True:
+            async def _keepalive(interval: float = 30.0):
+                try:
+                    while True:
+                        await asyncio.sleep(interval)
+                        await ws.send("PING\r\n")
+                except asyncio.CancelledError:
+                    # normal shutdown
+                    pass
 
-                msg = await ws.recv(decode=True)
-                # Server‐side heartbeat
-                if msg.strip() == "PING":
-                    await ws.send("PONG\r\n")
-                    continue
+            ka_task = asyncio.create_task(_keepalive())
 
+            try:
+                while True:
 
-                if msg.startswith("MSG newCoinCreated.prod"):
-                    # The new coin is in the second line of the message
-                    payload = msg.split("\r\n", 2)[1]
-                    yield json.loads(payload)
+                    msg = await ws.recv(decode=True)
+                    # Server‐side heartbeat
+                    if msg.strip() == "PING":
+                        await ws.send("PONG\r\n")
+                        continue
+
+                    if msg.startswith("MSG newCoinCreated.prod"):
+                        # The new coin is in the second line of the message
+                        payload = msg.split("\r\n", 2)[1]
+                        yield json_deep_loads(payload)
+            finally:
+                ka_task.cancel()
+                # optionally await ka_task to silence warnings
+                with contextlib.suppress(asyncio.CancelledError):
+                    await ka_task
 
     async def stream_new_replies(self, mint: str) -> AsyncIterator[dict]:
         uri = "wss://prod-v2.nats.realtime.pump.fun/"
@@ -155,3 +190,5 @@ class PumpFunAPI:
                 # optionally await ka_task to silence warnings
                 with contextlib.suppress(asyncio.CancelledError):
                     await ka_task
+
+# streaming the price / trades of a single coin is not possible need to use the all_trades endpoint
