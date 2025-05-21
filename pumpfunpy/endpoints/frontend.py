@@ -27,3 +27,14 @@ class FrontendAPI:
             f"/replies/{mint}",
             params={"limit": limit, "offset": offset, "reverseOrder": reverse_order},
         )
+
+    def get_coin_info(self, mint: str) -> dict:
+        return self._client.request("GET", f"/coins/{mint}")
+
+    def get_market_cap(self, mint: str) -> float:
+        coin = self.get_coin_info(mint)
+        return coin["market_cap"]
+
+    def has_graduated(self, mint: str) -> bool:
+        coin = self.get_coin_info(mint)
+        return coin["complete"]

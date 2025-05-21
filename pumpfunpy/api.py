@@ -34,6 +34,15 @@ class PumpFunAPI:
     def get_sol_price(self):  # note: this is delayed price
         return self._frontend.get_sol_price()
 
+    def get_coin_info(self, mint: str) -> dict:
+        return self._frontend.get_coin_info(mint)
+
+    def get_market_cap(self, mint: str) -> float:
+        return self._frontend.get_market_cap(mint)
+
+    def has_graduated(self, mint: str) -> bool:
+        return self._frontend.has_graduated(mint)
+
     def list_new_coins(self, last_score: int = 0) -> dict:
         return self._advanced.list_new_coins(last_score)
 

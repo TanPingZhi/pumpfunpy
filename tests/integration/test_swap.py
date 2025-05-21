@@ -10,7 +10,8 @@ def api():
     return PumpFunAPI()
 
 def test_get_candlesticks(api):
-    response = api.get_candlesticks(MINT, limit=1)
+    response = api.get_candlesticks(MINT, limit=1, currency='SOL')
     print(json.dumps(response, indent=4))
 
     assert True
+

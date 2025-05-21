@@ -9,7 +9,7 @@ class SwapAPI:
     def get_candlesticks(
             self,
             mint: str,
-            interval: str = "1m",  # “5s”, “1m”, “5m” … whatever pump.fun supports
+            interval: str = "1m",  # “5s”, “1m”, “5m”
             limit: int = 1000,
             currency: str = "USD",
     ) -> list[dict]:
