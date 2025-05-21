@@ -55,3 +55,4 @@ async def test_stream_all_trades():
         assert isinstance(trade, dict)
         for key in ("signature", "mint", "sol_amount", "token_amount", "is_buy", "timestamp"):
             assert key in trade
+
