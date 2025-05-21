@@ -38,6 +38,10 @@ class PumpFunAPI:
     def get_coin_info(self, mint: str) -> dict:
         return self._frontend.get_coin_info(mint)
 
+
+    def get_price_in_sol(self, mint: str) -> float:
+        return float(self.get_candlesticks(mint, limit=1, currency='SOL')[-1]['close'])
+
     def get_market_cap(self, mint: str) -> float:
         return self._frontend.get_market_cap(mint)
 
@@ -57,6 +61,7 @@ class PumpFunAPI:
     def list_featured_coins(self) -> dict:
         return self._advanced.list_featured_coins()
 
+    # this function is only for non grad coins
     def get_candlesticks(self, mint: str, interval: str = "1m", limit: int = 1000, currency: str = "USD", ) -> list[
         dict]:
         return self._swap.get_candlesticks(mint=mint, interval=interval, limit=limit, currency=currency, )

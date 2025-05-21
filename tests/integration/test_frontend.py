@@ -71,3 +71,13 @@ def test_list_replies(api):
 
     assert 'hasMore' in response
     assert 'offset' in response
+
+def test_get_price_in_sol(api):
+    # price = api.get_price_in_sol(MINT)
+    m = "HJ2n2a3YK1LTBCRbS932cTtmXw4puhgG8Jb2WcpEpump"
+    price = api.get_price_in_sol(m)
+    info = api.get_coin_info(m)
+    print(json.dumps(info, indent=4))
+    print(json.dumps(price, indent=4))
+    assert isinstance(price, float)
+    assert price > 0
