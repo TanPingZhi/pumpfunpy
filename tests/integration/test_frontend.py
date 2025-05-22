@@ -74,7 +74,7 @@ def test_list_replies(api):
 
 def test_get_price_in_sol(api):
     # price = api.get_price_in_sol(MINT)
-    m = "HJ2n2a3YK1LTBCRbS932cTtmXw4puhgG8Jb2WcpEpump"
+    m = "6HZyKuvApDJ4pMqSL7TVwjNixoQWqBQcvDX4ayNBpump"
     price = api.get_price_in_sol(m)
     info = api.get_coin_info(m)
     print(json.dumps(info, indent=4))

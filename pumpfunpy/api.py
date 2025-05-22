@@ -13,6 +13,7 @@ from .config import API_VERSIONS
 from .endpoints.advanced import AdvancedAPI
 from .endpoints.frontend import FrontendAPI
 from .utils import json_deep_loads
+from .streamers import make_streamer
 
 
 class PumpFunAPI:
@@ -21,10 +22,12 @@ class PumpFunAPI:
                  _frontend_client: HTTPClient = None,
                  _advanced_client: HTTPClient = None,
                  _swap_client: HTTPClient = None,
+                 streamer_factory=make_streamer
                  ):
         self._frontend = FrontendAPI(_frontend_client or HTTPClient(API_VERSIONS['frontend_v3']))
         self._advanced = AdvancedAPI(_advanced_client or HTTPClient(API_VERSIONS['advanced_v2']))
         self._swap = SwapAPI(_swap_client or HTTPClient(API_VERSIONS["swap_v1"]))
+        self._make_streamer = streamer_factory
 
     def list_trades(self, mint: str, limit: int, offset: int = 0, minimum_size: int = 0) -> list:
         return self._frontend.list_trades(mint, limit, offset, minimum_size)
@@ -37,7 +40,6 @@ class PumpFunAPI:
 
     def get_coin_info(self, mint: str) -> dict:
         return self._frontend.get_coin_info(mint)
-
 
     def get_price_in_sol(self, mint: str) -> float:
         return float(self.get_candlesticks(mint, limit=1, currency='SOL')[-1]['close'])
@@ -67,192 +69,80 @@ class PumpFunAPI:
         return self._swap.get_candlesticks(mint=mint, interval=interval, limit=limit, currency=currency, )
 
     async def stream_all_trades(self) -> AsyncIterator[dict]:
-        queue: asyncio.Queue = asyncio.Queue()
-        sio = socketio.AsyncClient(logger=False, engineio_logger=False)
-
-        @sio.on("tradeCreated")
-        async def _(data):
-            await queue.put(data)
-
-        await sio.connect(
-            API_VERSIONS['frontend_v3'],
-            transports=["websocket"],
+        streamer = self._make_streamer(
+            kind="io",
+            url=API_VERSIONS['frontend_v3'],
+            event="tradeCreated"
         )
-
-        try:
-            while True:
-                trade = await queue.get()
-                yield trade
-        finally:
-            await sio.disconnect()
+        async with streamer as s:
+            async for msg in s:
+                yield msg
 
     async def stream_new_coins(self) -> AsyncIterator[dict]:
-        uri = "wss://prod-v2.nats.realtime.pump.fun/"
-        async with websockets.connect(uri) as ws:
-
-            # Send the NATS CONNECT handshake
-            connect_payload = {
-                "no_responders": True,
-                "protocol": 1,
-                "verbose": False,
-                "pedantic": False,
-                "user": "subscriber",
-                "pass": "lW5a9y20NceF6AE9",
-                "lang": "nats.ws",
-                "version": "1.29.2",
-                "headers": True,
-            }
-            await ws.send("CONNECT " + json.dumps(connect_payload) + "\r\n")
-            await ws.send("PING\r\n")
-            await ws.recv()  # Should be "PONG\r\n"
-
-            # Subscribe to the new‐coin subject
-            await ws.send("SUB newCoinCreated.prod 1\r\n")
-
-            async def _keepalive(interval: float = 30.0):
-                try:
-                    while True:
-                        await asyncio.sleep(interval)
-                        await ws.send("PING\r\n")
-                except asyncio.CancelledError:
-                    # normal shutdown
-                    pass
-
-            ka_task = asyncio.create_task(_keepalive())
-
-            try:
-                while True:
-
-                    msg = await ws.recv(decode=True)
-                    # Server‐side heartbeat
-                    if msg.strip() == "PING":
-                        await ws.send("PONG\r\n")
-                        continue
-
-                    if msg.startswith("MSG newCoinCreated.prod"):
-                        # The new coin is in the second line of the message
-                        payload = msg.split("\r\n", 2)[1]
-                        yield json_deep_loads(payload)
-            finally:
-                ka_task.cancel()
-                # optionally await ka_task to silence warnings
-                with contextlib.suppress(asyncio.CancelledError):
-                    await ka_task
+        payload = {
+            "no_responders": True,
+            "protocol": 1,
+            "verbose": False,
+            "pedantic": False,
+            "user": "subscriber",
+            "pass": "lW5a9y20NceF6AE9",
+            "lang": "nats.ws",
+            "version": "1.29.2",
+            "headers": True,
+        }
+        streamer = self._make_streamer(
+            kind="nats",
+            uri="wss://prod-v2.nats.realtime.pump.fun/",
+            connect_payload=payload,
+            subject="newCoinCreated.prod"
+        )
+        async with streamer as s:
+            async for msg in s:
+                yield json_deep_loads(msg)
 
     async def stream_new_replies(self, mint: str) -> AsyncIterator[dict]:
-        uri = "wss://prod-v2.nats.realtime.pump.fun/"
-        async with websockets.connect(uri) as ws:
-
-            # 1) NATS CONNECT handshake
-            connect_payload = {
-                "no_responders": True,
-                "protocol": 1,
-                "verbose": False,
-                "pedantic": False,
-                "user": "subscriber",
-                "pass": "lW5a9y20NceF6AE9",
-                "lang": "nats.ws",
-                "version": "1.29.2",
-                "headers": True,
-            }
-            await ws.send("CONNECT " + json.dumps(connect_payload) + "\r\n")
-            # prime the first heartbeat
-            await ws.send("PING\r\n")
-            await ws.recv()  # expect "PONG\r\n"
-
-            # 2) subscribe to replies
-            await ws.send(f"SUB newReplyCreated.{mint}.prod 1\r\n")
-
-            # 3) spawn keep-alive task
-            async def _keepalive(interval: float = 30.0):
-                try:
-                    while True:
-                        await asyncio.sleep(interval)
-                        await ws.send("PING\r\n")
-                except asyncio.CancelledError:
-                    # normal shutdown
-                    pass
-
-            ka_task = asyncio.create_task(_keepalive())
-
-            try:
-                # 4) main read loop
-                while True:
-                    msg = await ws.recv(decode=True)
-
-                    # server-side heartbeat
-                    if msg.strip() == "PING":
-                        await ws.send("PONG\r\n")
-                        continue
-
-                    # your actual payloads
-                    if msg.startswith("MSG newReplyCreated"):
-                        payload = msg.split("\r\n", 2)[1]
-                        yield json_deep_loads(payload)['replyPayload']
-
-            finally:
-                ka_task.cancel()
-                # optionally await ka_task to silence warnings
-                with contextlib.suppress(asyncio.CancelledError):
-                    await ka_task
+        payload = {
+            "no_responders": True,
+            "protocol": 1,
+            "verbose": False,
+            "pedantic": False,
+            "user": "subscriber",
+            "pass": "lW5a9y20NceF6AE9",
+            "lang": "nats.ws",
+            "version": "1.29.2",
+            "headers": True,
+        }
+        streamer = self._make_streamer(
+            kind="nats",
+            uri="wss://prod-v2.nats.realtime.pump.fun/",
+            connect_payload=payload,
+            subject=f"newReplyCreated.{mint}.prod"
+        )
+        async with streamer as s:
+            async for msg in s:
+                yield json_deep_loads(msg)["replyPayload"]
 
     async def stream_graduated_coin_trades(self, mint: str) -> AsyncIterator[dict]:
-        # 0) resolve mint → pool PDA
-        pool_id = DexScreenerAPI().get_pool_for_mint(mint=mint)
+        pool_id = DexScreenerAPI().get_pool_for_mint(mint)
+        payload = {
+            "no_responders": True,
+            "protocol": 1,
+            "verbose": False,
+            "pedantic": False,
+            "user": "subscriber",
+            "pass": "7wjQpG3JvSQbUg3X",
+            "lang": "nats.ws",
+            "version": "1.29.2",
+            "headers": True,
+        }
+        streamer = self._make_streamer(
+            kind="nats",
+            uri="wss://amm-prod.nats.realtime.pump.fun/",
+            connect_payload=payload,
+            subject=f"ammTradeEvent.{pool_id}"
+        )
+        async with streamer as s:
+            async for msg in s:
+                yield json_deep_loads(msg)
 
-        uri = "wss://amm-prod.nats.realtime.pump.fun/"
-        async with websockets.connect(uri) as ws:
-
-            # 1) NATS CONNECT handshake
-            connect_payload = {
-                "no_responders": True,
-                "protocol": 1,
-                "verbose": False,
-                "pedantic": False,
-                "user": "subscriber",
-                "pass": "7wjQpG3JvSQbUg3X",
-                "lang": "nats.ws",
-                "version": "1.29.2",
-                "headers": True,
-            }
-            await ws.send("CONNECT " + json.dumps(connect_payload) + "\r\n")
-            await ws.send("PING\r\n")
-            await ws.recv()   # first "PONG\r\n"
-
-            # 2) Subscribe to the pool’s trade-event stream
-            await ws.send(f"SUB ammTradeEvent.{pool_id} 1\r\n")
-
-            # 3) keep-alive
-            async def _keepalive(interval: float = 30.0):
-                try:
-                    while True:
-                        await asyncio.sleep(interval)
-                        await ws.send("PING\r\n")
-                except asyncio.CancelledError:
-                    pass
-
-            ka_task = asyncio.create_task(_keepalive())
-
-            try:
-                # 4) main read loop
-                while True:
-                    msg = await ws.recv(decode=True)
-
-                    # respond to server heartbeat
-                    if msg.strip() == "PING":
-                        await ws.send("PONG\r\n")
-                        continue
-
-                    subj = f"MSG ammTradeEvent.{pool_id}"
-                    if msg.startswith(subj):
-                        # the second line is the JSON payload
-                        payload = msg.split("\r\n", 2)[1]
-                        yield json_deep_loads(payload)
-
-            finally:
-                ka_task.cancel()
-                with contextlib.suppress(asyncio.CancelledError):
-                    await ka_task
 # streaming the price / trades of a single coin is not possible need to use the all_trades endpoint
-
-

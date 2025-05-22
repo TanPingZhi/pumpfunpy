@@ -2,6 +2,7 @@ from ..transport import HTTPClient
 from ..config import DEXSCREENER_BASE_URL
 from ..exceptions import APIRequestError
 
+
 class DexScreenerAPI:
     def __init__(self, client: HTTPClient = None):
         # base_url ends up "https://api.dexscreener.com"
