@@ -23,8 +23,7 @@ dependencies = [
     "websockets>=15.0,<16.0",
     "aiohttp>=3.8,<4.0"
 ]
+urls = { "Source" = "https://github.com/TanPingZhi/pumpfunpy" }
 
 [tool.setuptools]
 license-files = []   # <-- stop setuptools from adding License-File
-
-urls = { "Source" = "https://github.com/TanPingZhi/pumpfunpy" }
