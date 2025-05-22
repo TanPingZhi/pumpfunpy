@@ -26,3 +26,5 @@ dependencies = [
 
 [tool.setuptools]
 license-files = []   # <-- stop setuptools from adding License-File
+
+urls = { "Source" = "https://github.com/TanPingZhi/pumpfunpy" }
