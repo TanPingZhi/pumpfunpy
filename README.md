@@ -1,6 +1,19 @@
 # pumpfunpy
 
-**The Bloomberg Terminal for Degenerates**
+## ⚠️ Unofficial third‑party library
+
+pumpfunpy is **NOT** affiliated with Pump.fun.  
+All Pump.fun trademarks and logos belong to their respective owners.
+
+This client ships with default **public credentials** that are embedded in
+Pump.fun’s own JavaScript bundle (as observed on 2025‑05‑23).  They may change
+at any time.  
+
+
+Use of pumpfunpy is subject to Pump.fun’s Terms of Service; please respect
+their rate limits.  See [DISCLAIMER.md](DISCLAIMER.md) for full legal terms.
+
+## **The Bloomberg Terminal for Degenerates**
 
 A Python client library for interacting with Pump.fun’s on-chain and off-chain APIs: stream live trades & coin listings, query market data, execute swaps, and transfer SPL tokens.
 
