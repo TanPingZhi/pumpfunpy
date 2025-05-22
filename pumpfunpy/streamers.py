@@ -1,4 +1,3 @@
-# pumpfunpy/streamers.py
 from abc import ABC, abstractmethod
 import asyncio
 import json
